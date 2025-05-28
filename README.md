@@ -11,8 +11,6 @@ Downscaling methods are based on those described in:
 - A Technique for Generating Regional Climate Scenarios Using a Nearest-Neighbour Algorithm [http://dx.doi.org/10.1029/2002WR001769]
 - Statistical downscaling using K-nearest neighbors [https://doi.org/10.1029/2004WR003444]
 
-Data Sources: ?
-
 ## Usage
 1.	First, install this plugin. The easiest way to do this is via the InVEST Workbench (version 3.16.0 or later). You can download and install this plugin using its git URL (https://github.com/claire-simpson/invest-gcm-downscaling.git), or, if you prefer, you can clone this repo to your computer and then install it using the path to your local copy.
 2.	Once the plugin has been installed, you can run it from the Workbench, just as you would run any InVEST model.
@@ -76,7 +74,7 @@ A datastack json file is provided in this repo along with a sample vector for ex
 - **Parallelization**: Tasks are managed using taskgraph for reproducibility and performance.
 
 ## Troubleshooting
-- If GCM files are not found, ensure they are correctly stored in the GCS bucket and readable with anonymous credentials.
+- If the model runs without error but downscaled data are not created, the data for the selected model may not exist. Ensure that the GCM files for the selected model are stored in the GCS bucket or try selecting a different model.
 - Errors about date bounds typically mean the requested reference or prediction period is outside the range of available data.
 - If you see unexpected results in extreme precipitation adjustment, check the `.csv` files created in intermediate/ for GPD samples.
 
