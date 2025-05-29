@@ -4,6 +4,7 @@ by Angarita H., Yates D., Depsky N. 2014-2021
 """
 
 import logging
+from osgeo import ogr
 from pprint import pformat
 import pandas
 import warnings
@@ -23,22 +24,6 @@ LOG_FMT = (
     "%(levelname)s %(message)s")
 
 DATE_EXPR = r"^(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
-
-MODEL_LIST = [
-    'CanESM5',  # Canadian Earth System Model version 5
-    'CESM2',  # NCAR (National Center for Atmospheric Research) Community Earth System Model 2
-    'CESM2-WACCM',  # NCAR Community Earth System Model 2 - Whole Atmosphere Community Climate Model
-    'CMCC-CM2-HR4',  # CMCC (Euro-Mediterranean Center on Climate Change) Climate Model 2 - High Resolution 4
-    'CMCC-CM2-SR5',  # CMCC Climate Model 2 - Standard Resolution
-    'CMCC-ESM2',  # CMCC Earth System Model 2
-    'FGOALS-g3',  # Flexible Global Ocean-Atmosphere-Land System Model Grid-Point Version 3
-    'GFDL-EMS4',  # NOAA Geophyscial Fluid Dynamics Laboratory Earth System Model 4
-    'MIROC6',  # Model for Interdisciplinary Research on Climate 6 (Japan)
-    'MPI-ESM1-2-LR',  # Max Planck Institute Earth System Model 2 - Low Res
-    # 'CESM-FV2',  # never created zarrs; https://github.com/natcap/gcm-downscaling/issues/19
-    # 'IPSL-CM6A-LR', # unreadable by xarray; https://github.com/h5netcdf/h5netcdf/issues/94
-    # 'MPI-ESM1-2-HR'  # has a bad file with 0 bytes
-]
 
 
 MODEL_SPEC = spec.ModelSpec(
@@ -82,7 +67,10 @@ MODEL_SPEC = spec.ModelSpec(
         spec.VectorInput(
             id='aoi_path',
             name='Area of Interest',
-            about=gettext('Area of interest'),
+            about=gettext(
+                'Path to a GDAL polygon vector representing the Area of Interest '
+                '(AOI). Coordinates represented by longitude, latitude decimal degrees '
+                '(e.g. WGS84).'),  
             required=True,
             fields={},
             geometry_types={'POLYGON', 'MULTIPOLYGON'}
@@ -146,7 +134,7 @@ MODEL_SPEC = spec.ModelSpec(
                 "physics, and resolutions. Each model will be used to "
                 "generate a single downscaled product for each CMIP6 Shared "
                 "Socioeconomic Pathways (SSP) experiment."),
-            options=MODEL_LIST,
+            options=knn.MODEL_LIST,
             required='not hindcast'
         ),
         spec.PercentInput(
@@ -211,75 +199,112 @@ MODEL_SPEC = spec.ModelSpec(
             about=gettext(
                 'Report with graphs and visualizations of downscaled '
                 'hindcast precipitation data.')
+        ),
+        spec.DirectoryOutput(
+            id='intermediate',
+            about=gettext(
+                'Directory with intermediate outputs, which can be '
+                'useful for debugging.'),
+            contents=[
+                spec.SingleBandRasterOutput(
+                    id='aoi_mask_[model].nc',
+                    about=gettext('Area of Interest (AOI) mask')
+                ),
+                spec.CSVOutput(
+                    id='bootstrapped_dates_precip_[model_experiment | hindcast].csv',
+                    about=gettext(
+                        'Bootstrapped dates and associated precipitation '
+                        'values used in the downscaling process.'),
+                    columns=[
+                        spec.StringOutput(
+                            id='historic_date',
+                            about=gettext(
+                                'Date from the historical record used '
+                                'in bootstrapping.')
+                        ),
+                        spec.NumberOutput(
+                            id='historic_precip',
+                            about=gettext('Historic precipitation'),
+                            units=u.millimeter
+                        ),
+                        spec.IntegerOutput(
+                            id='wet_state',
+                            about=gettext(
+                                'Dry/wet/very wet state classification for '
+                                'the historic date.')
+                        ),
+                        spec.IntegerOutput(
+                            id='next_wet_state',
+                            about=gettext(
+                                'Predicted dry/wet/very wet state for the '
+                                'subsequent time step.')
+                        ),
+                        spec.StringOutput(
+                            id='next_historic_date',
+                            about='Next date in the bootstrapped sequence.'
+                        )
+                    ]
+                ),
+                spec.SingleBandRasterOutput(
+                    id='extracted_[model]_[experiment | hindcast].nc',
+                    about=gettext(
+                        'NetCDF file containing precipitation data extracted from the '
+                        'specified model and experiment (or hindcast), prior to downscaling.')
+                ),
+                spec.SingleBandRasterOutput(
+                    id='extracted_mswep.nc',
+                    about=gettext(
+                        'NetCDF file with precipitation data extracted from the '
+                        'MSWEP dataset, used as observational reference.')
+                ),
+                spec.SingleBandRasterOutput(
+                    id='mswep_mean.nc',
+                    about=gettext(
+                        'NetCDF file representing the mean precipitation from '
+                        'the MSWEP dataset over the analysis period.')
+                ),
+                spec.SingleBandRasterOutput(
+                    id='pr_day_[model]_[experiment]_mean.nc',
+                    about=gettext(
+                        'NetCDF file containing the daily mean precipitation '
+                        'values for the specified model and experiment.')
+                ),
+                spec.CSVOutput(
+                    id='synthesized_extreme_precip_[model]_[experiment].csv',
+                    about=gettext(
+                        'CSV file summarizing synthesized extreme precipitation '
+                        'events for the specified model and experiment.'),
+                    columns=[
+                        spec.NumberOutput(
+                            id='historic_sample',
+                            about=gettext(
+                                'Precipitation value from the historical sample'),
+                            units=u.millimeter
+                        ),
+                        spec.NumberOutput(
+                            id='forecast_sample',
+                            about=gettext(
+                                'Projected precipitation value from the '
+                                'forecast sample'),
+                            units=u.millimeter
+                        )
+                    ]
+                )
+            ]
         )
-        # spec.DirectoryOuptut(
-        #     contents=[
-        #     ]
-        # )
     ]
 )
-    # 'aoi_mask_[model].nc': {
-    #     'about': 'Area of Interest (AOI) mask'
-    # },
-    # 'bootstrapped_dates_precip_[model_experiment | hindcast].csv': {
-    #     'about': 'Bootstrapped dates and associated precipitation values used '
-    #                 'in the downscaling process.',
-    #     'columns': {
-    #         'historic_date': {
-    #             'about': 'Date from the historical record used in bootstrapping.',
-    #             'type': 'freestyle_string'  # date
-    #         },
-    #         'historic_precip': {
-    #             'about': 'Historic precipitation',
-    #             'type': 'number',
-    #             'unit': u.millimeter
-    #         },
-    #         'wet_state': {
-    #             'about': 'Dry/wet/very wet state classification for the historic date.',
-    #             'type': 'integer'
-    #         },
-    #         'next_wet_state': {
-    #             'about': 'Predicted dry/wet/very wet state for the subsequent time step.',
-    #             'type': 'integer'
-    #         },
-    #         'next_historic_date': {
-    #             'about': 'Next date in the bootstrapped sequence.',
-    #             'type': 'freestyle_string'  # date
-    #         }
-    #     }
-    # },
-    # 'extracted_[model]_[experiment | hindcast].nc': {
-    #     'about': 'NetCDF file containing precipitation data extracted from the '
-    #                 'specified model and experiment (or hindcast), prior to downscaling.'
-    # },
-    # 'extracted_mswep.nc': {
-    #     'about': 'NetCDF file with precipitation data extracted from the MSWEP '
-    #                 'dataset, used as observational reference.'
-    # },
-    # 'mswep_mean.nc': {
-    #     'about': 'NetCDF file representing the mean precipitation from the '
-    #                 'MSWEP dataset over the analysis period.'
-    # },
-    # 'pr_day_[model]_[experiment]_mean.nc': {
-    #     'about': 'NetCDF file containing the daily mean precipitation values '
-    #                 'for the specified model and experiment.'
-    # },
-    # 'synthesized_extreme_precip_[model]_[experiment].csv': {
-    #     'about': 'CSV file summarizing synthesized extreme precipitation events '
-    #                 'for the specified model and experiment.',
-    #     'columns': {
-    #         'historic_sample': {
-    #             'about': 'Precipitation value from the historical sample',
-    #             'type': 'number',
-    #             'units': u.millimeters
-    #         },
-    #         'forecast_sample': {
-    #             'about': 'Projected precipitation value from the forecast sample',
-    #             'type': 'number',
-    #             'units': u.millimeters
-    #         }
-    #     }
-    # }
+
+
+def _check_gdal_shapefile(filepath):
+    """Check that the input AOI vector is a shapefile"""
+    try:
+        driver = ogr.GetDriverByName('ESRI Shapefile')
+        datasource = driver.Open(filepath, 0)
+        if datasource is not None:
+            return True
+    except:
+        raise ValueError(f"{filepath} is not a valid GDAL-compatible shapefile.")
 
 
 def execute(args):
@@ -303,17 +328,16 @@ def execute(args):
             upper boundary (inclusive) of the middle bin of precipitation states.
         args['hindcast'] (bool): If True, observed data (MSWEP) is substituted
             for GCM data and the prediction period is set to match the date
-            range of the observed dataset (``MSWEP_DATE_RANGE``).
+            range of the observed dataset (``knn.MSWEP_DATE_RANGE``).
         args['prediction_start_date'] (string, optional):
             ('YYYY-MM-DD') first day in the simulation period.
             Required if `hindcast=False`.
         args['prediction_end_date'] (string, optional):
             ('YYYY-MM-DD') last day in the simulation period.
             Required if `hindcast=False`.
-        args['gcm_model'] (sequence, optional): a sequence of strings
-            representing CMIP6 model codes. Each model will be used to generate
-            a single downscaled product for each experiment in `gcm_experiment_list`.
-            Available models are stored in ``GCM_MODEL_LIST``.
+        args['gcm_model'] (string): a string representing a CMIP6 model code.
+            Each model will be used to generate a single downscaled product for
+            each experiment. Available models are stored in ``knn.MODEL_LIST``.
             Required if `hindcast=False`.
         args['observed_dataset_path'] (string, optional): if provided, this
             dataset will be used instead of MSWEP as the source of observed,
@@ -338,6 +362,9 @@ def execute(args):
             multiple items.
     """
     LOGGER.info(pformat(args))
+
+    # Check that AOI is a shapefile
+    _check_gdal_shapefile(args['aoi_path'])
 
     ref_end = pandas.to_datetime(args['reference_period_end_date'])
     ref_start = pandas.to_datetime(args['reference_period_start_date'])
@@ -381,5 +408,4 @@ def execute(args):
 
 @validation.invest_validator
 def validate(args):
-    pass
-    # return validation.validate(args, MODEL_SPEC) #['args'])
+    return validation.validate(args, MODEL_SPEC)
