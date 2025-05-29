@@ -12,7 +12,7 @@ Downscaling methods are based on those described in:
 - Statistical downscaling using K-nearest neighbors [https://doi.org/10.1029/2004WR003444]
 
 ## Usage
-1.	First, install this plugin. The easiest way to do this is via the InVEST Workbench (version 3.16.0 or later). You can download and install this plugin using its git URL (https://github.com/claire-simpson/invest-gcm-downscaling.git), or, if you prefer, you can clone this repo to your computer and then install it using the path to your local copy.
+1.	First, install this plugin. The easiest way to do this is via the InVEST Workbench (version 3.16.0 or later). You can download and install this plugin using its git URL (https://github.com/natcap/invest-gcm-downscaling.git), or, if you prefer, you can clone this repo to your computer and then install it using the path to your local copy.
 2.	Once the plugin has been installed, you can run it from the Workbench, just as you would run any InVEST model.
 
 ## Data
