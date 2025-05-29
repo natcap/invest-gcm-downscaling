@@ -1,23 +1,19 @@
-[build-system] #declare build backend and other dependencies to build project
+[build-system]
 requires = ["setuptools >= 40.6.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-py-modules = ["invest_gcm_downscaling"]
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[project] #this projects basic metadata
+[project]
 name="invest_gcm_downscaling"
 version="0.0.1"
-dependencies = ["taskgraph", "pygeoprocessing", "knn @ git+https://github.com/claire-simpson/invest-gcm-downscaling.git@bugfix/zarr-files"] 
-#, "natcap.invest @ git+https://github.com/natcap/invest.git@feature/plugins"]
+dependencies = [
+    "taskgraph",
+    "pygeoprocessing",
+    "natcap.invest>=3.16.0a2",
+    "knn @ git+https://github.com/natcap/gcm-downscaling.git"] 
 
-[tool.natcap.invest] #tool-specific subtable
-api_version = "0.0.1"
-model_title = "GCM Downscaling" #user-facing name
-model_id = "gcm_downscaling"
+[tool.natcap.invest]
+api_version = "v1"
+package_name = "invest_gcm_downscaling"
 conda_dependencies = [
     "affine",
     "dask",
