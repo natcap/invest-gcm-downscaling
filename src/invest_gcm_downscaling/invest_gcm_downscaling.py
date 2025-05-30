@@ -104,14 +104,14 @@ MODEL_SPEC = spec.ModelSpec(
             id='prediction_start_date',
             name='Prediction Start Date',
             about=gettext("First day in the simulation period, in format 'YYYY-MM-DD'"),
-            required='not hindcast or gcm_model', #required if user specifies a gcm_model
+            required='gcm_model',
             regexp=DATE_EXPR
         ),
         spec.StringInput(
             id='prediction_end_date',
             name='Prediction End Date',
             about=gettext("Last day in the simulation period, in format 'YYYY-MM-DD'"),
-            required='not hindcast or gcm_model',
+            required='gcm_model',
             regexp=DATE_EXPR
         ),
         spec.BooleanInput(
