@@ -23,7 +23,7 @@ LOG_FMT = (
     "%(module)s.%(funcName)s(%(lineno)d) "
     "%(levelname)s %(message)s")
 
-DATE_EXPR = r"^(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
+DATE_EXPR = r"^(18|19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
 
 
 MODEL_SPEC = spec.ModelSpec(
@@ -70,7 +70,7 @@ MODEL_SPEC = spec.ModelSpec(
             about=gettext(
                 'Path to a GDAL polygon vector representing the Area of Interest '
                 '(AOI). Coordinates represented by longitude, latitude decimal degrees '
-                '(e.g. WGS84).'),  
+                '(e.g. WGS84).'),
             required=True,
             fields={},
             geometry_types={'POLYGON', 'MULTIPOLYGON'}
@@ -79,24 +79,24 @@ MODEL_SPEC = spec.ModelSpec(
         spec.StringInput(
             id='reference_period_start_date',
             name='Reference Period Start Date',
-            about=gettext('First day in the reference period, which is '
-                        'used to calculate climate "normals". The reference '
-                        'period should typically span about 30 years or more. '
-                        'If ``observed_dataset`` is not input, reference period '
-                        'must extend past 1979, and should extend at least 30 years beyond 1979.'
-                        'Format: "YYYY-MM-DD"'),
+            about=gettext(
+                'First day in the reference period, which is used to calculate '
+                'climate "normals". The reference period should typically '
+                'span about 30 years or more. If ``observed_dataset`` is not '
+                'input, reference period must extend past 1979, and should '
+                'extend at least 30 years beyond 1979. Format: "YYYY-MM-DD"'),
             required=True,
             regexp=DATE_EXPR
         ),
         spec.StringInput(
             id='reference_period_end_date',
             name='Reference Period End Date',
-            about=gettext('Last day in the reference period, which is '
-                        'used to calculate climate "normals". The reference '
-                        'period should typically span about 30 years or more. '
-                        'If ``observed_dataset`` is not input, reference period '
-                        'must extend past 1979, and should extend at least 30 years beyond 1979.'
-                        'Format: "YYYY-MM-DD"'),
+            about=gettext(
+                'Last day in the reference period, which is used to calculate '
+                'climate "normals". The reference period should typically '
+                'span about 30 years or more. If ``observed_dataset`` is not '
+                'input, reference period must extend past 1979, and should '
+                'extend at least 30 years beyond 1979. Format: "YYYY-MM-DD"'),
             required=True,
             regexp=DATE_EXPR
         ),
@@ -104,14 +104,14 @@ MODEL_SPEC = spec.ModelSpec(
             id='prediction_start_date',
             name='Prediction Start Date',
             about=gettext("First day in the simulation period, in format 'YYYY-MM-DD'"),
-            required='not hindcast',
+            required='gcm_model',
             regexp=DATE_EXPR
         ),
         spec.StringInput(
             id='prediction_end_date',
             name='Prediction End Date',
             about=gettext("Last day in the simulation period, in format 'YYYY-MM-DD'"),
-            required='not hindcast',
+            required='gcm_model',
             regexp=DATE_EXPR
         ),
         spec.BooleanInput(
@@ -134,7 +134,7 @@ MODEL_SPEC = spec.ModelSpec(
                 "physics, and resolutions. Each model will be used to "
                 "generate a single downscaled product for each CMIP6 Shared "
                 "Socioeconomic Pathways (SSP) experiment."),
-            options=knn.MODEL_LIST,
+            options=[''] + knn.MODEL_LIST,
             required='not hindcast'
         ),
         spec.PercentInput(
@@ -145,7 +145,8 @@ MODEL_SPEC = spec.ModelSpec(
                 'absolute precipitation value that will be the upper '
                 'boundary (inclusive) of the middle bin of precipitation '
                 'states.'),
-            required=True
+            required=True,
+            expression="(value >= 0) & (value <= 100)",
         ),
         spec.NumberInput(
             id='lower_precip_threshold',
@@ -206,7 +207,7 @@ MODEL_SPEC = spec.ModelSpec(
                 'Directory with intermediate outputs, which can be '
                 'useful for debugging.'),
             contents=[
-                spec.SingleBandRasterOutput(
+                spec.SingleBandRasterOutput( #will need to update this to RasterOutput on release
                     id='aoi_mask_[model].nc',
                     about=gettext('Area of Interest (AOI) mask')
                 ),
@@ -307,6 +308,22 @@ def _check_gdal_shapefile(filepath):
         raise ValueError(f"{filepath} is not a valid GDAL-compatible shapefile.")
 
 
+def _check_lonlat_coords(vector_path):
+    ds = ogr.Open(vector_path)
+    layer = ds.GetLayer()
+    spatial_ref = layer.GetSpatialRef()
+    if spatial_ref is None:
+        raise ValueError("AOI vector file has no spatial reference system defined.")
+
+    if not spatial_ref.IsGeographic():
+        raise ValueError(
+            "The AOI vector file must use geographic coordinates (longitude "
+            "and latitude in decimal degrees), such as WGS 84 (EPSG:4326). "
+            "However, a projected coordinate system was found instead. To "
+            "fix this, reproject your vector data to EPSG:4326 (or similar)."
+        )
+
+
 def execute(args):
     """Create a downscaled precipitation product for an area of interest.
 
@@ -335,7 +352,7 @@ def execute(args):
         args['prediction_end_date'] (string, optional):
             ('YYYY-MM-DD') last day in the simulation period.
             Required if `hindcast=False`.
-        args['gcm_model'] (string): a string representing a CMIP6 model code.
+        args['gcm_model'] (string, optional): a string representing a CMIP6 model code.
             Each model will be used to generate a single downscaled product for
             each experiment. Available models are stored in ``knn.MODEL_LIST``.
             Required if `hindcast=False`.
@@ -363,8 +380,8 @@ def execute(args):
     """
     LOGGER.info(pformat(args))
 
-    # Check that AOI is a shapefile
-    _check_gdal_shapefile(args['aoi_path'])
+    # Check AOI spatial reference
+    _check_lonlat_coords(args['aoi_path'])
 
     ref_end = pandas.to_datetime(args['reference_period_end_date'])
     ref_start = pandas.to_datetime(args['reference_period_start_date'])
@@ -373,9 +390,10 @@ def execute(args):
     if ref_end <= ref_start:
         raise ValueError('Reference end date must be after reference start date.')
 
-    if pandas.to_datetime(args['prediction_end_date']) <= pandas.to_datetime(
-            args['prediction_start_date']):
-        raise ValueError('Prediction end date must be after prediction start date.')
+    if args.get('prediction_start_date') and args.get('prediction_end_date'):
+        if pandas.to_datetime(args['prediction_end_date']) <= pandas.to_datetime(
+                args['prediction_start_date']):
+            raise ValueError('Prediction end date must be after prediction start date.')
 
     # if length of reference period is less than 30 years, throw a Warning
     # if the reference period is too short, there will be a cryptic error
@@ -391,21 +409,22 @@ def execute(args):
         'workspace_dir': args['workspace_dir'],
         'reference_period_dates': (args['reference_period_start_date'],
                                    args['reference_period_end_date']),
-        'prediction_dates': (args['prediction_start_date'],
-                             args['prediction_end_date']),
+        'prediction_dates': (args['prediction_start_date'] or None,
+                             args['prediction_end_date'] or None),
         'hindcast': args['hindcast'],
         'gcm_experiment_list': knn.GCM_EXPERIMENT_LIST,
-        'gcm_model_list': [args['gcm_model']],
         'upper_precip_percentile': float(args['upper_precip_percentile']),
         'lower_precip_threshold': float(args['lower_precip_threshold']),
         'observed_dataset_path': args['observed_dataset_path'] or None,
-        'n_workers': args['n_workers'],
+        'n_workers': args['n_workers'] or -1,
     }
+
+    if args['gcm_model']:  # only add this model arg if gcm_model != ''
+        model_args['gcm_model_list'] = [args['gcm_model']]
 
     knn.execute(model_args)
 
 
-
 @validation.invest_validator
-def validate(args):
+def validate(args, limit_to=None):
     return validation.validate(args, MODEL_SPEC)
