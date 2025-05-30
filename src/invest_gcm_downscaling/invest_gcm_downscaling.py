@@ -308,6 +308,22 @@ def _check_gdal_shapefile(filepath):
         raise ValueError(f"{filepath} is not a valid GDAL-compatible shapefile.")
 
 
+def _check_lonlat_coords(vector_path):
+    ds = ogr.Open(vector_path)
+    layer = ds.GetLayer()
+    spatial_ref = layer.GetSpatialRef()
+    if spatial_ref is None:
+        raise ValueError("AOI vector file has no spatial reference system defined.")
+
+    if not spatial_ref.IsGeographic():
+        raise ValueError(
+            "The AOI vector file must use geographic coordinates (longitude "
+            "and latitude in decimal degrees), such as WGS 84 (EPSG:4326). "
+            "However, a projected coordinate system was found instead. To "
+            "fix this, reproject your vector data to EPSG:4326 (or similar)."
+        )
+
+
 def execute(args):
     """Create a downscaled precipitation product for an area of interest.
 
@@ -364,8 +380,8 @@ def execute(args):
     """
     LOGGER.info(pformat(args))
 
-    # Check that AOI is a shapefile
-    # _check_gdal_shapefile(args['aoi_path'])
+    # Check AOI spatial reference
+    _check_lonlat_coords(args['aoi_path'])
 
     ref_end = pandas.to_datetime(args['reference_period_end_date'])
     ref_start = pandas.to_datetime(args['reference_period_start_date'])
