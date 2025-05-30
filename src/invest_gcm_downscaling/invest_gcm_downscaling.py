@@ -134,7 +134,7 @@ MODEL_SPEC = spec.ModelSpec(
                 "physics, and resolutions. Each model will be used to "
                 "generate a single downscaled product for each CMIP6 Shared "
                 "Socioeconomic Pathways (SSP) experiment."),
-            options=knn.MODEL_LIST,
+            options=knn.MODEL_LIST.insert('', 0),
             required='not hindcast'
         ),
         spec.PercentInput(
@@ -145,7 +145,8 @@ MODEL_SPEC = spec.ModelSpec(
                 'absolute precipitation value that will be the upper '
                 'boundary (inclusive) of the middle bin of precipitation '
                 'states.'),
-            required=True
+            required=True,
+            expression="(value >= 0) & (value <= 100)",
         ),
         spec.NumberInput(
             id='lower_precip_threshold',
@@ -335,7 +336,7 @@ def execute(args):
         args['prediction_end_date'] (string, optional):
             ('YYYY-MM-DD') last day in the simulation period.
             Required if `hindcast=False`.
-        args['gcm_model'] (string): a string representing a CMIP6 model code.
+        args['gcm_model'] (string, optional): a string representing a CMIP6 model code.
             Each model will be used to generate a single downscaled product for
             each experiment. Available models are stored in ``knn.MODEL_LIST``.
             Required if `hindcast=False`.
@@ -391,16 +392,18 @@ def execute(args):
         'workspace_dir': args['workspace_dir'],
         'reference_period_dates': (args['reference_period_start_date'],
                                    args['reference_period_end_date']),
-        'prediction_dates': (args['prediction_start_date'],
-                             args['prediction_end_date']),
+        'prediction_dates': (args['prediction_start_date'] or None,
+                             args['prediction_end_date'] or None),
         'hindcast': args['hindcast'],
         'gcm_experiment_list': knn.GCM_EXPERIMENT_LIST,
-        'gcm_model_list': [args['gcm_model']],
         'upper_precip_percentile': float(args['upper_precip_percentile']),
         'lower_precip_threshold': float(args['lower_precip_threshold']),
         'observed_dataset_path': args['observed_dataset_path'] or None,
         'n_workers': args['n_workers'],
     }
+
+    if args['gcm_model']:  # only add this model arg if gcm_model != ''
+        model_args['gcm_model_list'] = [args['gcm_model']]
 
     knn.execute(model_args)
 
