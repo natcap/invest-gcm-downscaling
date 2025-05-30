@@ -409,17 +409,17 @@ def execute(args):
         'workspace_dir': args['workspace_dir'],
         'reference_period_dates': (args['reference_period_start_date'],
                                    args['reference_period_end_date']),
-        'prediction_dates': (args['prediction_start_date'] or None,
-                             args['prediction_end_date'] or None),
+        'prediction_dates': (args.get('prediction_start_date') or None,
+                             args.get('prediction_end_date') or None),
         'hindcast': args['hindcast'],
         'gcm_experiment_list': knn.GCM_EXPERIMENT_LIST,
         'upper_precip_percentile': float(args['upper_precip_percentile']),
         'lower_precip_threshold': float(args['lower_precip_threshold']),
         'observed_dataset_path': args['observed_dataset_path'] or None,
-        'n_workers': args['n_workers'] or -1,
+        'n_workers': args.get('n_workers') or -1,
     }
 
-    if args['gcm_model']:  # only add this model arg if gcm_model != ''
+    if args.get('gcm_model'):  # only add this model arg if gcm_model != ''
         model_args['gcm_model_list'] = [args['gcm_model']]
 
     knn.execute(model_args)
