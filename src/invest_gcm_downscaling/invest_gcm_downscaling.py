@@ -374,9 +374,10 @@ def execute(args):
     if ref_end <= ref_start:
         raise ValueError('Reference end date must be after reference start date.')
 
-    if pandas.to_datetime(args['prediction_end_date']) <= pandas.to_datetime(
-            args['prediction_start_date']):
-        raise ValueError('Prediction end date must be after prediction start date.')
+    if ('prediction_end_date' in args and args['prediction_end_date'] !='') and 'prediction_start_date' in args:
+        if pandas.to_datetime(args['prediction_end_date']) <= pandas.to_datetime(
+                args['prediction_start_date']):
+            raise ValueError('Prediction end date must be after prediction start date.')
 
     # if length of reference period is less than 30 years, throw a Warning
     # if the reference period is too short, there will be a cryptic error
