@@ -23,7 +23,7 @@ LOG_FMT = (
     "%(module)s.%(funcName)s(%(lineno)d) "
     "%(levelname)s %(message)s")
 
-DATE_EXPR = r"^(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
+DATE_EXPR = r"^(18|19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
 
 
 MODEL_SPEC = spec.ModelSpec(
@@ -70,7 +70,7 @@ MODEL_SPEC = spec.ModelSpec(
             about=gettext(
                 'Path to a GDAL polygon vector representing the Area of Interest '
                 '(AOI). Coordinates represented by longitude, latitude decimal degrees '
-                '(e.g. WGS84).'),  
+                '(e.g. WGS84).'),
             required=True,
             fields={},
             geometry_types={'POLYGON', 'MULTIPOLYGON'}
@@ -104,14 +104,14 @@ MODEL_SPEC = spec.ModelSpec(
             id='prediction_start_date',
             name='Prediction Start Date',
             about=gettext("First day in the simulation period, in format 'YYYY-MM-DD'"),
-            required='not hindcast',
+            required='not hindcast or gcm_model', #required if user specifies a gcm_model
             regexp=DATE_EXPR
         ),
         spec.StringInput(
             id='prediction_end_date',
             name='Prediction End Date',
             about=gettext("Last day in the simulation period, in format 'YYYY-MM-DD'"),
-            required='not hindcast',
+            required='not hindcast or gcm_model',
             regexp=DATE_EXPR
         ),
         spec.BooleanInput(
@@ -134,7 +134,7 @@ MODEL_SPEC = spec.ModelSpec(
                 "physics, and resolutions. Each model will be used to "
                 "generate a single downscaled product for each CMIP6 Shared "
                 "Socioeconomic Pathways (SSP) experiment."),
-            options=knn.MODEL_LIST.insert('', 0),
+            options=[''] + knn.MODEL_LIST,
             required='not hindcast'
         ),
         spec.PercentInput(
@@ -365,7 +365,7 @@ def execute(args):
     LOGGER.info(pformat(args))
 
     # Check that AOI is a shapefile
-    _check_gdal_shapefile(args['aoi_path'])
+    # _check_gdal_shapefile(args['aoi_path'])
 
     ref_end = pandas.to_datetime(args['reference_period_end_date'])
     ref_start = pandas.to_datetime(args['reference_period_start_date'])
@@ -409,7 +409,6 @@ def execute(args):
     knn.execute(model_args)
 
 
-
 @validation.invest_validator
-def validate(args):
+def validate(args, limit_to=None):
     return validation.validate(args, MODEL_SPEC)
