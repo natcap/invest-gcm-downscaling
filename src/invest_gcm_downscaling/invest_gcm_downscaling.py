@@ -79,24 +79,24 @@ MODEL_SPEC = spec.ModelSpec(
         spec.StringInput(
             id='reference_period_start_date',
             name='Reference Period Start Date',
-            about=gettext('First day in the reference period, which is '
-                        'used to calculate climate "normals". The reference '
-                        'period should typically span about 30 years or more. '
-                        'If ``observed_dataset`` is not input, reference period '
-                        'must extend past 1979, and should extend at least 30 years beyond 1979.'
-                        'Format: "YYYY-MM-DD"'),
+            about=gettext(
+                'First day in the reference period, which is used to calculate '
+                'climate "normals". The reference period should typically '
+                'span about 30 years or more. If ``observed_dataset`` is not '
+                'input, reference period must extend past 1979, and should '
+                'extend at least 30 years beyond 1979. Format: "YYYY-MM-DD"'),
             required=True,
             regexp=DATE_EXPR
         ),
         spec.StringInput(
             id='reference_period_end_date',
             name='Reference Period End Date',
-            about=gettext('Last day in the reference period, which is '
-                        'used to calculate climate "normals". The reference '
-                        'period should typically span about 30 years or more. '
-                        'If ``observed_dataset`` is not input, reference period '
-                        'must extend past 1979, and should extend at least 30 years beyond 1979.'
-                        'Format: "YYYY-MM-DD"'),
+            about=gettext(
+                'Last day in the reference period, which is used to calculate '
+                'climate "normals". The reference period should typically '
+                'span about 30 years or more. If ``observed_dataset`` is not '
+                'input, reference period must extend past 1979, and should '
+                'extend at least 30 years beyond 1979. Format: "YYYY-MM-DD"'),
             required=True,
             regexp=DATE_EXPR
         ),
@@ -207,7 +207,7 @@ MODEL_SPEC = spec.ModelSpec(
                 'Directory with intermediate outputs, which can be '
                 'useful for debugging.'),
             contents=[
-                spec.SingleBandRasterOutput(
+                spec.SingleBandRasterOutput( #will need to update this to RasterOutput on release
                     id='aoi_mask_[model].nc',
                     about=gettext('Area of Interest (AOI) mask')
                 ),
@@ -400,7 +400,7 @@ def execute(args):
         'upper_precip_percentile': float(args['upper_precip_percentile']),
         'lower_precip_threshold': float(args['lower_precip_threshold']),
         'observed_dataset_path': args['observed_dataset_path'] or None,
-        'n_workers': args['n_workers'],
+        'n_workers': args['n_workers'] or -1,
     }
 
     if args['gcm_model']:  # only add this model arg if gcm_model != ''
