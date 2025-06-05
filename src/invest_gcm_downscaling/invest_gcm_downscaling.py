@@ -174,13 +174,12 @@ MODEL_SPEC = spec.ModelSpec(
             )
     ],
     outputs=[
-        spec.SingleBandRasterOutput(
+        spec.RasterOutput(
             id='downscaled_precip_[model]_[experiment].nc',
-
             about=gettext(
                 'Gridded NetCDF file containing the downscaled daily '
                 'precipitation time series for the specified climate '
-                'model and experiment scenario.')
+                'model and experiment scenario.'),
         ),
         spec.FileOutput(
             id='downscaled_precip_[model]_[experiment].pdf',
@@ -188,7 +187,7 @@ MODEL_SPEC = spec.ModelSpec(
                 'Report with graphs and visualizations of downscaled '
                 'precipitation data for specified model and experiment')
         ),
-        spec.SingleBandRasterOutput(
+        spec.RasterOutput(
             id='downscaled_precip_hindcast.nc',
             about=gettext(
                 'Gridded NetCDF file with downscaled historical '
@@ -207,7 +206,7 @@ MODEL_SPEC = spec.ModelSpec(
                 'Directory with intermediate outputs, which can be '
                 'useful for debugging.'),
             contents=[
-                spec.SingleBandRasterOutput( #will need to update this to RasterOutput on release
+                spec.RasterOutput(
                     id='aoi_mask_[model].nc',
                     about=gettext('Area of Interest (AOI) mask')
                 ),
@@ -246,25 +245,25 @@ MODEL_SPEC = spec.ModelSpec(
                         )
                     ]
                 ),
-                spec.SingleBandRasterOutput(
+                spec.RasterOutput(
                     id='extracted_[model]_[experiment | hindcast].nc',
                     about=gettext(
                         'NetCDF file containing precipitation data extracted from the '
                         'specified model and experiment (or hindcast), prior to downscaling.')
                 ),
-                spec.SingleBandRasterOutput(
+                spec.RasterOutput(
                     id='extracted_mswep.nc',
                     about=gettext(
                         'NetCDF file with precipitation data extracted from the '
                         'MSWEP dataset, used as observational reference.')
                 ),
-                spec.SingleBandRasterOutput(
+                spec.RasterOutput(
                     id='mswep_mean.nc',
                     about=gettext(
                         'NetCDF file representing the mean precipitation from '
                         'the MSWEP dataset over the analysis period.')
                 ),
-                spec.SingleBandRasterOutput(
+                spec.RasterOutput(
                     id='pr_day_[model]_[experiment]_mean.nc',
                     about=gettext(
                         'NetCDF file containing the daily mean precipitation '

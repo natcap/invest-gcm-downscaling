@@ -1,16 +1,16 @@
 {
     "args": {
         "aoi_path": "sample_polygon.shp",
-        "gcm_model": "FGOALS-g3",
+        "gcm_model": "MIROC6",
         "hindcast": true,
         "lower_precip_threshold": "1",
         "observed_dataset_path": "",
-        "prediction_end_date": "2030-01-01",
-        "prediction_start_date": "2019-01-01",
-        "reference_period_end_date": "2010-12-31",
+        "prediction_end_date": "2028-01-01",
+        "prediction_start_date": "2025-01-01",
+        "reference_period_end_date": "2010-01-01",
         "reference_period_start_date": "1980-01-01",
         "upper_precip_percentile": "80"
     },
-    "invest_version": "3.16.0a2",
-    "model_id": "gcm_downscaling"
+    "invest_version": "3.16.0",
+    "model_id": "gcm_downscaling@0_0_1"
 }
