@@ -29,7 +29,7 @@ DATE_EXPR = r"^(18|19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
 MODEL_SPEC = spec.ModelSpec(
     model_id='gcm_downscaling',
     model_title=gettext('GCM Downscaling'),
-    userguide='',  # change to README later
+    userguide='https://github.com/natcap/invest-gcm-downscaling/blob/main/README.md',
     input_field_order=[
         ['workspace_dir', 'aoi_path'],
         ['reference_period_start_date', 'reference_period_end_date'],
