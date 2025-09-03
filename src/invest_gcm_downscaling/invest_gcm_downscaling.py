@@ -46,7 +46,7 @@ MODEL_SPEC = spec.ModelSpec(
                 "The folder where all the model's output files will be written. If "
                 "this folder does not exist, it will be created. If data already "
                 "exists in the folder, it will be overwritten."),
-            contents={},
+            contents=[],
             must_exist=False,
             permissions="rwx"
         ),
@@ -72,7 +72,7 @@ MODEL_SPEC = spec.ModelSpec(
                 '(AOI). Coordinates represented by longitude, latitude decimal degrees '
                 '(e.g. WGS84).'),
             required=True,
-            fields={},
+            fields=[],
             geometry_types={'POLYGON', 'MULTIPOLYGON'}
             # 'projected'=True,
         ),
@@ -134,7 +134,7 @@ MODEL_SPEC = spec.ModelSpec(
                 "physics, and resolutions. Each model will be used to "
                 "generate a single downscaled product for each CMIP6 Shared "
                 "Socioeconomic Pathways (SSP) experiment."),
-            options=[''] + knn.MODEL_LIST,
+            options=[spec.Option(key=modelname) for modelname in ['']+knn.MODEL_LIST],
             required='not hindcast'
         ),
         spec.PercentInput(
@@ -174,7 +174,7 @@ MODEL_SPEC = spec.ModelSpec(
             )
     ],
     outputs=[
-        spec.RasterOutput(
+        spec.SingleBandRasterOutput(
             id='downscaled_precip_[model]_[experiment].nc',
             about=gettext(
                 'Gridded NetCDF file containing the downscaled daily '
@@ -187,7 +187,7 @@ MODEL_SPEC = spec.ModelSpec(
                 'Report with graphs and visualizations of downscaled '
                 'precipitation data for specified model and experiment')
         ),
-        spec.RasterOutput(
+        spec.SingleBandRasterOutput(
             id='downscaled_precip_hindcast.nc',
             about=gettext(
                 'Gridded NetCDF file with downscaled historical '
@@ -206,7 +206,7 @@ MODEL_SPEC = spec.ModelSpec(
                 'Directory with intermediate outputs, which can be '
                 'useful for debugging.'),
             contents=[
-                spec.RasterOutput(
+                spec.SingleBandRasterOutput(
                     id='aoi_mask_[model].nc',
                     about=gettext('Area of Interest (AOI) mask')
                 ),
@@ -245,25 +245,25 @@ MODEL_SPEC = spec.ModelSpec(
                         )
                     ]
                 ),
-                spec.RasterOutput(
+                spec.SingleBandRasterOutput(
                     id='extracted_[model]_[experiment | hindcast].nc',
                     about=gettext(
                         'NetCDF file containing precipitation data extracted from the '
                         'specified model and experiment (or hindcast), prior to downscaling.')
                 ),
-                spec.RasterOutput(
+                spec.SingleBandRasterOutput(
                     id='extracted_mswep.nc',
                     about=gettext(
                         'NetCDF file with precipitation data extracted from the '
                         'MSWEP dataset, used as observational reference.')
                 ),
-                spec.RasterOutput(
+                spec.SingleBandRasterOutput(
                     id='mswep_mean.nc',
                     about=gettext(
                         'NetCDF file representing the mean precipitation from '
                         'the MSWEP dataset over the analysis period.')
                 ),
-                spec.RasterOutput(
+                spec.SingleBandRasterOutput(
                     id='pr_day_[model]_[experiment]_mean.nc',
                     about=gettext(
                         'NetCDF file containing the daily mean precipitation '
