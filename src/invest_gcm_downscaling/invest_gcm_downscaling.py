@@ -153,7 +153,7 @@ MODEL_SPEC = spec.ModelSpec(
             )
     ],
     outputs=[
-        spec.RasterOutput(
+        spec.SingleBandRasterOutput(
             id='downscaled_precip_[model]_[experiment].nc',
             path='output/downscaled_precip_[model]_[experiment].nc',
             about=gettext(
@@ -169,7 +169,7 @@ MODEL_SPEC = spec.ModelSpec(
                 'Report with graphs and visualizations of downscaled '
                 'precipitation data for specified model and experiment')
         ),
-        spec.RasterOutput(
+        spec.SingleBandRasterOutput(
             id='downscaled_precip_hindcast.nc',
             path='output/downscaled_precip_hindcast.nc',
             about=gettext(
