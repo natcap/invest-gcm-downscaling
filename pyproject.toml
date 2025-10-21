@@ -8,7 +8,7 @@ version="0.0.1"
 dependencies = [
     "taskgraph",
     "pygeoprocessing",
-    "natcap.invest>=3.16.0",
+    "natcap.invest>=3.17.0",
     "knn @ git+https://github.com/natcap/gcm-downscaling.git"] 
 
 [tool.natcap.invest]
