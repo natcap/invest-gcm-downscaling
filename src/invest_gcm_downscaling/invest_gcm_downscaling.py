@@ -24,12 +24,14 @@ LOG_FMT = (
     "%(levelname)s %(message)s")
 
 DATE_EXPR = r"^(18|19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
+LIST_MODELS = [spec.Option(key=k) for k in knn.MODEL_LIST]
 
 
 MODEL_SPEC = spec.ModelSpec(
     model_id='gcm_downscaling',
     model_title=gettext('GCM Downscaling'),
     userguide='https://github.com/natcap/invest-gcm-downscaling/blob/main/README.md',
+    module_name=__name__,
     input_field_order=[
         ['workspace_dir', 'aoi_path'],
         ['reference_period_start_date', 'reference_period_end_date'],
@@ -39,31 +41,8 @@ MODEL_SPEC = spec.ModelSpec(
         ['upper_precip_percentile', 'lower_precip_threshold'],
         ['observed_dataset_path']],
     inputs=[
-        spec.DirectoryInput(
-            id="workspace_dir",
-            name=gettext("workspace"),
-            about=gettext(
-                "The folder where all the model's output files will be written. If "
-                "this folder does not exist, it will be created. If data already "
-                "exists in the folder, it will be overwritten."),
-            contents=[],
-            must_exist=False,
-            permissions="rwx"
-        ),
-        spec.NumberInput(
-            id="n_workers",
-            name=gettext("taskgraph n_workers parameter"),
-            about=gettext(
-                "The n_workers parameter to provide to taskgraph. "
-                "-1 will cause all jobs to run synchronously. "
-                "0 will run all jobs in the same process, but scheduling will take "
-                "place asynchronously. Any other positive integer will cause that "
-                "many processes to be spawned to execute tasks."),
-            units=None,
-            required=False,
-            expression="value >= -1",
-            hidden=True
-        ),
+        spec.WORKSPACE,
+        spec.N_WORKERS,
         spec.VectorInput(
             id='aoi_path',
             name='Area of Interest',
@@ -73,8 +52,8 @@ MODEL_SPEC = spec.ModelSpec(
                 '(e.g. WGS84).'),
             required=True,
             fields=[],
-            geometry_types={'POLYGON', 'MULTIPOLYGON'}
-            # 'projected'=True,
+            geometry_types={'POLYGON', 'MULTIPOLYGON'},
+            projected=True
         ),
         spec.StringInput(
             id='reference_period_start_date',
@@ -134,7 +113,7 @@ MODEL_SPEC = spec.ModelSpec(
                 "physics, and resolutions. Each model will be used to "
                 "generate a single downscaled product for each CMIP6 Shared "
                 "Socioeconomic Pathways (SSP) experiment."),
-            options=[spec.Option(key=modelname) for modelname in ['']+knn.MODEL_LIST],
+            options=[spec.Option(key="")] + LIST_MODELS,
             required='not hindcast'
         ),
         spec.PercentInput(
@@ -176,135 +155,134 @@ MODEL_SPEC = spec.ModelSpec(
     outputs=[
         spec.SingleBandRasterOutput(
             id='downscaled_precip_[model]_[experiment].nc',
+            path='output/downscaled_precip_[model]_[experiment].nc',
             about=gettext(
                 'Gridded NetCDF file containing the downscaled daily '
                 'precipitation time series for the specified climate '
                 'model and experiment scenario.'),
+            bands=[]
         ),
         spec.FileOutput(
             id='downscaled_precip_[model]_[experiment].pdf',
+            path='output/downscaled_precip_[model]_[experiment].pdf',
             about=gettext(
                 'Report with graphs and visualizations of downscaled '
                 'precipitation data for specified model and experiment')
         ),
         spec.SingleBandRasterOutput(
             id='downscaled_precip_hindcast.nc',
+            path='output/downscaled_precip_hindcast.nc',
             about=gettext(
                 'Gridded NetCDF file with downscaled historical '
                 'precipitation data (hindcast), serving as a baseline for '
-                'model validation.')
+                'model validation.'),
+            bands=[]
         ),
         spec.FileOutput(
             id='downscaled_precip_hindcast.pdf',
+            path='output/downscaled_precip_hindcast.pdf',
             about=gettext(
                 'Report with graphs and visualizations of downscaled '
                 'hindcast precipitation data.')
         ),
-        spec.DirectoryOutput(
-            id='intermediate',
+        spec.SingleBandRasterOutput(
+            id='aoi_mask_[model].nc',
+            path='intermediate/aoi_mask_[model].nc',
+            about=gettext('Area of Interest (AOI) mask'),
+            units=u.none
+        ),
+        spec.CSVOutput(
+            id='bootstrapped_dates_precip_[model_experiment | hindcast].csv',
+            path='intermediate/bootstrapped_dates_precip_[model_experiment | hindcast].csv',
             about=gettext(
-                'Directory with intermediate outputs, which can be '
-                'useful for debugging.'),
-            contents=[
-                spec.SingleBandRasterOutput(
-                    id='aoi_mask_[model].nc',
-                    about=gettext('Area of Interest (AOI) mask')
-                ),
-                spec.CSVOutput(
-                    id='bootstrapped_dates_precip_[model_experiment | hindcast].csv',
+                'Bootstrapped dates and associated precipitation '
+                'values used in the downscaling process.'),
+            columns=[
+                spec.StringOutput(
+                    id='historic_date',
                     about=gettext(
-                        'Bootstrapped dates and associated precipitation '
-                        'values used in the downscaling process.'),
-                    columns=[
-                        spec.StringOutput(
-                            id='historic_date',
-                            about=gettext(
-                                'Date from the historical record used '
-                                'in bootstrapping.')
-                        ),
-                        spec.NumberOutput(
-                            id='historic_precip',
-                            about=gettext('Historic precipitation'),
-                            units=u.millimeter
-                        ),
-                        spec.IntegerOutput(
-                            id='wet_state',
-                            about=gettext(
-                                'Dry/wet/very wet state classification for '
-                                'the historic date.')
-                        ),
-                        spec.IntegerOutput(
-                            id='next_wet_state',
-                            about=gettext(
-                                'Predicted dry/wet/very wet state for the '
-                                'subsequent time step.')
-                        ),
-                        spec.StringOutput(
-                            id='next_historic_date',
-                            about='Next date in the bootstrapped sequence.'
-                        )
-                    ]
+                        'Date from the historical record used '
+                        'in bootstrapping.')
                 ),
-                spec.SingleBandRasterOutput(
-                    id='extracted_[model]_[experiment | hindcast].nc',
-                    about=gettext(
-                        'NetCDF file containing precipitation data extracted from the '
-                        'specified model and experiment (or hindcast), prior to downscaling.')
+                spec.NumberOutput(
+                    id='historic_precip',
+                    about=gettext('Historic precipitation'),
+                    units=u.millimeter
                 ),
-                spec.SingleBandRasterOutput(
-                    id='extracted_mswep.nc',
+                spec.IntegerOutput(
+                    id='wet_state',
                     about=gettext(
-                        'NetCDF file with precipitation data extracted from the '
-                        'MSWEP dataset, used as observational reference.')
+                        'Dry/wet/very wet state classification for '
+                        'the historic date.')
                 ),
-                spec.SingleBandRasterOutput(
-                    id='mswep_mean.nc',
+                spec.IntegerOutput(
+                    id='next_wet_state',
                     about=gettext(
-                        'NetCDF file representing the mean precipitation from '
-                        'the MSWEP dataset over the analysis period.')
+                        'Predicted dry/wet/very wet state for the '
+                        'subsequent time step.')
                 ),
-                spec.SingleBandRasterOutput(
-                    id='pr_day_[model]_[experiment]_mean.nc',
+                spec.StringOutput(
+                    id='next_historic_date',
+                    about='Next date in the bootstrapped sequence.'
+                )
+            ]
+        ),
+        spec.RasterOutput(
+            id='extracted_[model]_[experiment | hindcast].nc',
+            path='intermediate/extracted_[model]_[experiment | hindcast].nc',
+            about=gettext(
+                'NetCDF file containing precipitation data extracted from the '
+                'specified model and experiment (or hindcast), prior to downscaling.'),
+            bands=[]
+        ),
+        spec.RasterOutput(
+            id='extracted_mswep.nc',
+            path='intermediate/extracted_mswep.nc',
+            about=gettext(
+                'NetCDF file with precipitation data extracted from the '
+                'MSWEP dataset, used as observational reference.'),
+            bands=[]
+        ),
+        spec.RasterOutput(
+            id='mswep_mean.nc',
+            path='intermediate/mswep_mean.nc',
+            about=gettext(
+                'NetCDF file representing the mean precipitation from '
+                'the MSWEP dataset over the analysis period.'),
+            bands=[]
+        ),
+        spec.RasterOutput(
+            id='pr_day_[model]_[experiment]_mean.nc',
+            path='intermediate/pr_day_[model]_[experiment]_mean.nc',
+            about=gettext(
+                'NetCDF file containing the daily mean precipitation '
+                'values for the specified model and experiment.'),
+            bands=[]
+        ),
+        spec.CSVOutput(
+            id='synthesized_extreme_precip_[model]_[experiment].csv',
+            path='intermediate/synthesized_extreme_precip_[model]_[experiment].csv',
+            about=gettext(
+                'CSV file summarizing synthesized extreme precipitation '
+                'events for the specified model and experiment.'),
+            columns=[
+                spec.NumberOutput(
+                    id='historic_sample',
                     about=gettext(
-                        'NetCDF file containing the daily mean precipitation '
-                        'values for the specified model and experiment.')
+                        'Precipitation value from the historical sample'),
+                    units=u.millimeter
                 ),
-                spec.CSVOutput(
-                    id='synthesized_extreme_precip_[model]_[experiment].csv',
+                spec.NumberOutput(
+                    id='forecast_sample',
                     about=gettext(
-                        'CSV file summarizing synthesized extreme precipitation '
-                        'events for the specified model and experiment.'),
-                    columns=[
-                        spec.NumberOutput(
-                            id='historic_sample',
-                            about=gettext(
-                                'Precipitation value from the historical sample'),
-                            units=u.millimeter
-                        ),
-                        spec.NumberOutput(
-                            id='forecast_sample',
-                            about=gettext(
-                                'Projected precipitation value from the '
-                                'forecast sample'),
-                            units=u.millimeter
-                        )
-                    ]
+                        'Projected precipitation value from the '
+                        'forecast sample'),
+                    units=u.millimeter
                 )
             ]
         )
     ]
 )
-
-
-def _check_gdal_shapefile(filepath):
-    """Check that the input AOI vector is a shapefile"""
-    try:
-        driver = ogr.GetDriverByName('ESRI Shapefile')
-        datasource = driver.Open(filepath, 0)
-        if datasource is not None:
-            return True
-    except:
-        raise ValueError(f"{filepath} is not a valid GDAL-compatible shapefile.")
 
 
 def _check_lonlat_coords(vector_path):
@@ -374,7 +352,7 @@ def execute(args):
         args['n_workers'] (int, optional): The number of worker processes to
             use. If omitted, computation will take place in the current process.
             If a positive number, tasks can be parallelized across this many
-            processes, which can be useful if `gcm_experiement_list` contain
+            processes, which can be useful if `gcm_experiment_list` contain
             multiple items.
     """
     LOGGER.info(pformat(args))
@@ -401,7 +379,7 @@ def execute(args):
     # historical dataset is > 30 years
     if ref_end < ref_start + pandas.DateOffset(years=30):
         warnings.warn("The reference period is less than 30 years.",
-                       category=UserWarning)
+                      category=UserWarning)
 
     model_args = {
         'aoi_path': args['aoi_path'],
@@ -412,9 +390,9 @@ def execute(args):
                              args.get('prediction_end_date') or None),
         'hindcast': args['hindcast'],
         'gcm_experiment_list': knn.GCM_EXPERIMENT_LIST,
-        'upper_precip_percentile': float(args['upper_precip_percentile']),
-        'lower_precip_threshold': float(args['lower_precip_threshold']),
-        'observed_dataset_path': args['observed_dataset_path'] or None,
+        'upper_precip_percentile': args['upper_precip_percentile'],
+        'lower_precip_threshold': args['lower_precip_threshold'],
+        'observed_dataset_path': args['observed_dataset_path'],
         'n_workers': args.get('n_workers') or -1,
     }
 
