@@ -3,13 +3,19 @@ This work is an adaptation of the GCMClimTool Library
 by Angarita H., Yates D., Depsky N. 2014-2021
 """
 
+from datetime import datetime
 import logging
+import gcsfs
+import os
 from osgeo import ogr
 from pprint import pformat
 import pandas
 import warnings
+import xarray
 
 from knn import knn
+from knn import plot
+
 
 from natcap.invest import spec
 from natcap.invest import validation
@@ -26,11 +32,23 @@ LOG_FMT = (
 DATE_EXPR = r"^(18|19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
 LIST_MODELS = [spec.Option(key=k) for k in knn.MODEL_LIST]
 
+_model_description = gettext(
+    """
+    The InVEST plugin for GCM Downscaling (https://github.com/natcap/gcm-downscaling)
+    is used to downscale gridded precipitation data from CMIP6 (Coupled Model
+    Intercomparison Project) GCMs (General Circulation Models) using observed
+    historical precipitation patterns. The goal is to produce realistic future
+    daily precipitation data that reflect both climate model projections and
+    statistical patterns of observed historical records. The model supports
+    both hindcasts and future projections.
+    """)
 
 MODEL_SPEC = spec.ModelSpec(
     model_id='gcm_downscaling',
     model_title=gettext('GCM Downscaling'),
     userguide='https://github.com/natcap/invest-gcm-downscaling/blob/main/README.md',
+    reporter='',
+    about=_model_description,
     module_name=__name__,
     input_field_order=[
         ['workspace_dir', 'aoi_path'],
@@ -53,7 +71,7 @@ MODEL_SPEC = spec.ModelSpec(
             required=True,
             fields=[],
             geometry_types={'POLYGON', 'MULTIPOLYGON'},
-            projected=True
+            projected=False
         ),
         spec.StringInput(
             id='reference_period_start_date',
@@ -154,8 +172,8 @@ MODEL_SPEC = spec.ModelSpec(
     ],
     outputs=[
         spec.SingleBandRasterOutput(
-            id='downscaled_precip_[model]_[experiment].nc',
-            path='output/downscaled_precip_[model]_[experiment].nc',
+            id='downscaled_precip_[MODEL]_[EXPERIMENT].nc',
+            path='output/downscaled_precip_[MODEL]_[EXPERIMENT].nc',
             about=gettext(
                 'Gridded NetCDF file containing the downscaled daily '
                 'precipitation time series for the specified climate '
@@ -163,8 +181,8 @@ MODEL_SPEC = spec.ModelSpec(
             bands=[]
         ),
         spec.FileOutput(
-            id='downscaled_precip_[model]_[experiment].pdf',
-            path='output/downscaled_precip_[model]_[experiment].pdf',
+            id='downscaled_precip_[MODEL]_[EXPERIMENT].pdf',
+            path='output/downscaled_precip_[MODEL]_[EXPERIMENT].pdf',
             about=gettext(
                 'Report with graphs and visualizations of downscaled '
                 'precipitation data for specified model and experiment')
@@ -186,14 +204,14 @@ MODEL_SPEC = spec.ModelSpec(
                 'hindcast precipitation data.')
         ),
         spec.SingleBandRasterOutput(
-            id='aoi_mask_[model].nc',
-            path='intermediate/aoi_mask_[model].nc',
+            id='aoi_mask_[MODEL].nc',
+            path='intermediate/aoi_mask_[MODEL].nc',
             about=gettext('Area of Interest (AOI) mask'),
             units=u.none
         ),
         spec.CSVOutput(
-            id='bootstrapped_dates_precip_[model_experiment | hindcast].csv',
-            path='intermediate/bootstrapped_dates_precip_[model_experiment | hindcast].csv',
+            id='bootstrapped_dates_precip_[MODEL]_[EXPERIMENT].csv', #MODEL_EXPERIMENT can also be 'hindcast'
+            path='intermediate/bootstrapped_dates_precip_[MODEL]_[EXPERIMENT].csv',
             about=gettext(
                 'Bootstrapped dates and associated precipitation '
                 'values used in the downscaling process.'),
@@ -228,11 +246,19 @@ MODEL_SPEC = spec.ModelSpec(
             ]
         ),
         spec.RasterOutput(
-            id='extracted_[model]_[experiment | hindcast].nc',
-            path='intermediate/extracted_[model]_[experiment | hindcast].nc',
+            id='extracted_[MODEL]_[EXPERIMENT].nc',  # EXPERIMENT can also be 'hindcast'
+            path='intermediate/extracted_[MODEL]_[EXPERIMENT].nc',
             about=gettext(
                 'NetCDF file containing precipitation data extracted from the '
-                'specified model and experiment (or hindcast), prior to downscaling.'),
+                'specified model and experiment (or hindcast), prior to'
+                'downscaling.'),
+            bands=[]
+        ),
+        spec.RasterOutput(
+            id='aoi_mask_mswep.nc',
+            path='intermediate/aoi_mask_mswep.nc',
+            about=gettext(
+                'AOI mask NetCDF file.'),
             bands=[]
         ),
         spec.RasterOutput(
@@ -252,16 +278,31 @@ MODEL_SPEC = spec.ModelSpec(
             bands=[]
         ),
         spec.RasterOutput(
-            id='pr_day_[model]_[experiment]_mean.nc',
-            path='intermediate/pr_day_[model]_[experiment]_mean.nc',
+            id='extracted_[MODEL]_historical.nc',
+            path='intermediate/extracted_[MODEL]_historical.nc',
+            about=gettext(
+                'NetCDF file with historical precipitation data extracted '
+                'from the [model].'),
+            bands=[]
+        ),
+        spec.CSVOutput(
+            id='bootstrapped_dates_precip_hindcast.csv',
+            path='intermediate/bootstrapped_dates_precip_hindcast.csv',
+            about=gettext(
+                'Bootstrapped dates precipitation hindcast table.'),
+            bands=[]
+        ),
+        spec.RasterOutput(
+            id='pr_day_[MODEL]_[EXPERIMENT]_mean.nc',
+            path='intermediate/pr_day_[MODEL]_[EXPERIMENT]_mean.nc',
             about=gettext(
                 'NetCDF file containing the daily mean precipitation '
                 'values for the specified model and experiment.'),
             bands=[]
         ),
         spec.CSVOutput(
-            id='synthesized_extreme_precip_[model]_[experiment].csv',
-            path='intermediate/synthesized_extreme_precip_[model]_[experiment].csv',
+            id='synthesized_extreme_precip_[MODEL]_[EXPERIMENT].csv',
+            path='intermediate/synthesized_extreme_precip_[MODEL]_[EXPERIMENT].csv',
             about=gettext(
                 'CSV file summarizing synthesized extreme precipitation '
                 'events for the specified model and experiment.'),
@@ -280,8 +321,9 @@ MODEL_SPEC = spec.ModelSpec(
                     units=u.millimeter
                 )
             ]
-        )
-    ]
+        ),
+        spec.TASKGRAPH_CACHE
+    ],
 )
 
 
@@ -352,10 +394,11 @@ def execute(args):
         args['n_workers'] (int, optional): The number of worker processes to
             use. If omitted, computation will take place in the current process.
             If a positive number, tasks can be parallelized across this many
-            processes, which can be useful if `gcm_experiment_list` contain
+            processes, which can be useful if `knn.GCM_EXPERIMENT_LIST` contain
             multiple items.
     """
     LOGGER.info(pformat(args))
+    args, file_registry, graph = MODEL_SPEC.setup(args)
 
     # Check AOI spatial reference
     _check_lonlat_coords(args['aoi_path'])
@@ -381,25 +424,339 @@ def execute(args):
         warnings.warn("The reference period is less than 30 years.",
                       category=UserWarning)
 
-    model_args = {
-        'aoi_path': args['aoi_path'],
-        'workspace_dir': args['workspace_dir'],
-        'reference_period_dates': (args['reference_period_start_date'],
-                                   args['reference_period_end_date']),
-        'prediction_dates': (args.get('prediction_start_date') or None,
-                             args.get('prediction_end_date') or None),
-        'hindcast': args['hindcast'],
-        'gcm_experiment_list': knn.GCM_EXPERIMENT_LIST,
-        'upper_precip_percentile': args['upper_precip_percentile'],
-        'lower_precip_threshold': args['lower_precip_threshold'],
-        'observed_dataset_path': args['observed_dataset_path'],
-        'n_workers': args.get('n_workers') or -1,
-    }
+    # Validate reference dates if using MSWEP data
+    if 'observed_dataset_path' not in args or \
+            args['observed_dataset_path'] is None:
+        min_mswep_date = pandas.to_datetime(knn.MSWEP_DATE_RANGE[0])
+        max_mswep_date = pandas.to_datetime(knn.MSWEP_DATE_RANGE[1])
+        if (ref_start > max_mswep_date or ref_end < min_mswep_date):
+            raise ValueError(
+                f'the requested reference time period is outside the '
+                f'time-range of MSWEP ({min_mswep_date} : {max_mswep_date})'
+            )
+
+    prediction_dates = (args.get('prediction_start_date') or None,
+                        args.get('prediction_end_date') or None)
+
+    reference_period_dates = (args['reference_period_start_date'],
+                              args['reference_period_end_date'])
 
     if args.get('gcm_model'):  # only add this model arg if gcm_model != ''
-        model_args['gcm_model_list'] = [args['gcm_model']]
+        gcm_model_list = [args['gcm_model'].upper()]
+    else:
+        gcm_model_list = []
 
-    knn.execute(model_args)
+    mswep_extract_path = file_registry['extracted_mswep.nc']
+    aoi_mask_mswep_path = file_registry['aoi_mask_mswep.nc']
+    mswep_netcdf_path = file_registry['mswep_mean.nc']
+
+    rasterize_dependent_task_list = []
+    if 'observed_dataset_path' in args and \
+            args['observed_dataset_path'] is not None:
+        mswep_extract_path = args['observed_dataset_path']
+    else:
+        extract_mswep_task = graph.add_task(
+            func=knn.extract_from_zarr,
+            kwargs={
+                'zarr_path': knn.MSWEP_STORE_PATH,
+                'aoi_path': args['aoi_path'],
+                'target_path': mswep_extract_path,
+                'open_chunks': knn.MSWEP_ZARR_CHUNKS,
+            },
+            task_name='Extract MSWEP data by bounding box',
+            target_path_list=[mswep_extract_path],
+            dependent_task_list=[]
+        )
+        rasterize_dependent_task_list.append(extract_mswep_task)
+        graph.join()
+
+    rasterize_aoi_mswep_task = graph.add_task(
+        func=knn.rasterize_aoi,
+        kwargs={
+            'aoi_path': args['aoi_path'],
+            'netcdf_path': mswep_extract_path,
+            'target_filepath': aoi_mask_mswep_path,
+        },
+        task_name='Rasterize AOI onto the MSWEP grid.',
+        target_path_list=[aoi_mask_mswep_path],
+        dependent_task_list=rasterize_dependent_task_list
+    )
+
+    reduce_mswep_task = graph.add_task(
+        func=knn.reduce_netcdf,
+        kwargs={
+            'source_file_list': [mswep_extract_path],
+            'target_filepath': mswep_netcdf_path,
+            'aoi_netcdf_path': aoi_mask_mswep_path
+        },
+        task_name='Reduce MSWEP to average value within AOI.',
+        target_path_list=[mswep_netcdf_path],
+        dependent_task_list=[rasterize_aoi_mswep_task]
+    )
+
+    if args['hindcast']:
+        hindcast_target_csv_path = file_registry[
+            'bootstrapped_dates_precip_hindcast.csv']
+        hindcast_date_range = knn.MSWEP_DATE_RANGE
+        if 'observed_dataset_path' in args and \
+                args['observed_dataset_path'] is not None:
+            with xarray.open_dataset(mswep_netcdf_path) as dataset:
+                min_date = str(dataset.time.min().values)[:10]
+                max_date = str(dataset.time.max().values)[:10]
+            hindcast_date_range = (min_date, max_date)
+        hind_bootstrap_dates_task = graph.add_task(
+            func=knn.bootstrap_dates_precip,
+            kwargs={
+                'observed_data_path': mswep_netcdf_path,
+                'prediction_dates': hindcast_date_range,
+                'reference_period_dates': reference_period_dates,
+                'lower_precip_threshold': args['lower_precip_threshold'],
+                'upper_precip_percentile': args['upper_precip_percentile'],
+                'target_csv_path': hindcast_target_csv_path,
+                'hindcast': True
+            },
+            task_name='Bootstrap dates for precipitation',
+            target_path_list=[hindcast_target_csv_path],
+            dependent_task_list=[reduce_mswep_task]
+        )
+        hindcast_target_netcdf_path = file_registry['downscaled_precip_hindcast.nc']
+        hind_downscale_precip_task = graph.add_task(
+            func=knn.downscale_precip,
+            kwargs={
+                'bootstrapped_dates_path': hindcast_target_csv_path,
+                'gridded_observed_precip': mswep_extract_path,
+                'aoi_mask_path': aoi_mask_mswep_path,
+                'target_netcdf_path': hindcast_target_netcdf_path
+            },
+            task_name='Downscale Precipitation',
+            target_path_list=[hindcast_target_netcdf_path],
+            dependent_task_list=[hind_bootstrap_dates_task]
+        )
+        hindcast_target_pdf_path = os.path.splitext(
+            hindcast_target_netcdf_path)[0] + '.pdf'
+        report_task = graph.add_task(
+            func=plot.plot,
+            kwargs={
+                'dates_filepath': hindcast_target_csv_path,
+                'precip_filepath': hindcast_target_netcdf_path,
+                'observed_mean_precip_filepath': mswep_netcdf_path,
+                'observed_precip_filepath': mswep_extract_path,
+                'aoi_netcdf_path': aoi_mask_mswep_path,
+                'reference_period_dates': reference_period_dates,
+                'hindcast': True,
+                'target_filename': hindcast_target_pdf_path
+            },
+            task_name='Report',
+            target_path_list=[hindcast_target_pdf_path],
+            dependent_task_list=[hind_downscale_precip_task]
+        )
+
+    gcs_filesystem = gcsfs.GCSFileSystem(token='anon')
+    for gcm_model in gcm_model_list:
+        historical_gcm_files = gcs_filesystem.glob(
+            f"{knn.BUCKET}/{knn.GCM_PREFIX}/{gcm_model}/{knn.GCM_PRECIP_VAR}_day_{gcm_model}_historical_*.zarr")
+        if len(historical_gcm_files) == 0:
+            LOGGER.warning(
+                f'No files found for model: {gcm_model}, experiment: historical; '
+                f'skipping model {gcm_model}. {f"{knn.BUCKET}/{knn.GCM_PREFIX}/{gcm_model}/{knn.GCM_PRECIP_VAR}_day_{gcm_model}_historical_*.zarr"}')
+            continue
+        if len(historical_gcm_files) > 1:
+            LOGGER.warning(
+                f'Ambiguous files found for model: {gcm_model}, experiment: historical; '
+                f'Found: {historical_gcm_files}; '
+                f'skipping model {gcm_model}.')
+            continue
+
+        # validate that reference dates fall within range of historical data
+        with xarray.open_dataset(
+                f'{knn.GCS_PROTOCOL}{historical_gcm_files[0]}',
+                decode_times=xarray.coders.CFDatetimeCoder(use_cftime=True),
+                engine='zarr',
+                backend_kwargs={"storage_options": {"token": 'anon'}}
+                    ) as gcm_hist_dataset:
+            knn.validate(gcm_hist_dataset, *reference_period_dates)
+        # validate forecast dates fall within range of future data
+        future_gcm_files = gcs_filesystem.glob(
+                f"{knn.BUCKET}/{knn.GCM_PREFIX}/{gcm_model}/{knn.GCM_PRECIP_VAR}_day_{gcm_model}_ssp*.zarr")
+        if len(future_gcm_files) == 0:
+            LOGGER.warning(
+                f'No files found for model: {gcm_model}. Skipping.')
+            continue
+        with xarray.open_dataset(
+                f'{knn.GCS_PROTOCOL}{future_gcm_files[0]}',
+                decode_times=xarray.coders.CFDatetimeCoder(use_cftime=True),
+                engine='zarr',
+                backend_kwargs={"storage_options": {"token": 'anon'}}
+                ) as future_gcm_dataset:
+            knn.validate(future_gcm_dataset, *prediction_dates)
+
+        gcm_historical_extract_path = file_registry[
+            ('extracted_[MODEL]_historical.nc', gcm_model)]
+        extract_historical_gcm_task = graph.add_task(
+            func=knn.extract_from_zarr,
+            kwargs={
+                'zarr_path': f'{knn.GCS_PROTOCOL}{historical_gcm_files[0]}',
+                'aoi_path': args['aoi_path'],
+                'target_path': gcm_historical_extract_path,
+                'open_chunks': knn.CMIP_ZARR_CHUNKS
+            },
+            task_name='Extract GCM historical data by bounding box',
+            target_path_list=[gcm_historical_extract_path],
+            dependent_task_list=[]
+        )
+
+        aoi_mask_gcm_path = file_registry[('aoi_mask_[MODEL].nc', gcm_model)]
+        rasterize_aoi_gcm_task = graph.add_task(
+            func=knn.rasterize_aoi,
+            kwargs={
+                'aoi_path': args['aoi_path'],
+                'netcdf_path': gcm_historical_extract_path,
+                'target_filepath': aoi_mask_gcm_path,
+            },
+            task_name='Rasterize AOI onto the GCM grid.',
+            target_path_list=[aoi_mask_gcm_path],
+            dependent_task_list=[extract_historical_gcm_task]
+        )
+        for gcm_experiment in knn.GCM_EXPERIMENT_LIST:
+            future_gcm_files = gcs_filesystem.glob(
+                f"{knn.BUCKET}/{knn.GCM_PREFIX}/{gcm_model}/{knn.GCM_PRECIP_VAR}_day_{gcm_model}_{gcm_experiment}_*.zarr")
+
+            if len(future_gcm_files) == 0:
+                LOGGER.warning(
+                    f'No files found for model: {gcm_model}, experiment: {gcm_experiment}'
+                    f'skipping experment: {gcm_experiment} - {gcm_model}.')
+                continue
+            if len(future_gcm_files) > 1:
+                LOGGER.warning(
+                    f'Ambiguous files found for model: {gcm_model}, experiment: {gcm_experiment}'
+                    f'Found: {future_gcm_files}'
+                    f'skipping experiment: {gcm_experiment} - {gcm_model}.')
+                continue
+            LOGGER.info(f'Starting {gcm_model} {gcm_experiment}')
+
+            target_csv_path = file_registry[
+                ('bootstrapped_dates_precip_[MODEL]_[EXPERIMENT].csv',
+                 gcm_model, gcm_experiment)]
+            target_netcdf_path = file_registry[
+                ('downscaled_precip_[MODEL]_[EXPERIMENT].nc',
+                 gcm_model, gcm_experiment)]
+
+            gcm_netcdf_path = file_registry[
+                (f"{knn.GCM_PRECIP_VAR}_day_[MODEL]_[EXPERIMENT]_mean.nc",
+                 gcm_model, gcm_experiment)]
+
+            gcm_future_extract_path = file_registry[
+                ("extracted_[MODEL]_[EXPERIMENT].nc",
+                 gcm_model, gcm_experiment)]
+
+            extract_future_gcm_task = graph.add_task(
+                func=knn.extract_from_zarr,
+                kwargs={
+                    'zarr_path': f'{knn.GCS_PROTOCOL}{future_gcm_files[0]}',
+                    'aoi_path': args['aoi_path'],
+                    'target_path': gcm_future_extract_path,
+                    'open_chunks': knn.CMIP_ZARR_CHUNKS
+                },
+                task_name='Extract GCM future data by bounding box',
+                target_path_list=[gcm_future_extract_path],
+                dependent_task_list=[]
+            )
+
+            target_extreme_values_path = file_registry[
+                ('synthesized_extreme_precip_[MODEL]_[EXPERIMENT].csv',
+                 gcm_model, gcm_experiment)
+            ]
+
+            extreme_values_task = graph.add_task(
+                func=knn.synthesize_extreme_values,
+                kwargs={
+                    'historical_gcm_path': gcm_historical_extract_path,
+                    'reference_period_dates': reference_period_dates,
+                    'forecast_gcm_path': gcm_future_extract_path,
+                    'prediction_period_dates': prediction_dates,
+                    'target_csv_path': target_extreme_values_path,
+                },
+                task_name='Synthesize extreme values',
+                target_path_list=[target_extreme_values_path],
+                store_result=True,
+                dependent_task_list=[extract_future_gcm_task,
+                                     extract_historical_gcm_task]
+            )
+
+            reduce_gcm_task = graph.add_task(
+                func=knn.reduce_netcdf,
+                kwargs={
+                    'source_file_list': [
+                        gcm_historical_extract_path, gcm_future_extract_path],
+                    'aoi_netcdf_path': aoi_mask_gcm_path,
+                    'target_filepath': gcm_netcdf_path,
+                },
+                task_name='Reduce GCM to average value within AOI.',
+                target_path_list=[gcm_netcdf_path],
+                dependent_task_list=[
+                    rasterize_aoi_gcm_task,
+                    extract_historical_gcm_task,
+                    extract_future_gcm_task]
+            )
+
+            bootstrap_dates_task = graph.add_task(
+                func=knn.bootstrap_dates_precip,
+                kwargs={
+                    'observed_data_path': mswep_netcdf_path,
+                    'prediction_dates': prediction_dates,
+                    'reference_period_dates': reference_period_dates,
+                    'gcm_netcdf_path': gcm_netcdf_path,
+                    'lower_precip_threshold': args['lower_precip_threshold'],
+                    'upper_precip_percentile': args['upper_precip_percentile'],
+                    'target_csv_path': target_csv_path
+                },
+                task_name='Bootstrap dates for precipitation',
+                target_path_list=[target_csv_path],
+                dependent_task_list=[reduce_gcm_task, reduce_mswep_task]
+            )
+
+            # TODO: is it problematic for these task objects created in for-loop
+            # to overwrite each other?
+            extreme_precip_threshold = extreme_values_task.get()
+            downscale_precip_task = graph.add_task(
+                func=knn.downscale_precip,
+                kwargs={
+                    'bootstrapped_dates_path': target_csv_path,
+                    'gridded_observed_precip': mswep_extract_path,
+                    'aoi_mask_path': aoi_mask_mswep_path,
+                    'target_netcdf_path': target_netcdf_path,
+                    'extreme_value_samples_path': target_extreme_values_path,
+                    'extreme_precip_threshold': extreme_precip_threshold
+                },
+                task_name='Downscale Precipitation',
+                target_path_list=[target_netcdf_path],
+                dependent_task_list=[bootstrap_dates_task, extreme_values_task]
+            )
+
+            target_pdf_path = file_registry[
+                ('downscaled_precip_[MODEL]_[EXPERIMENT].pdf',
+                 gcm_model, gcm_experiment)]
+
+            report_task = graph.add_task(
+                func=plot.plot,
+                kwargs={
+                    'dates_filepath': target_csv_path,
+                    'precip_filepath': target_netcdf_path,
+                    'observed_mean_precip_filepath': mswep_netcdf_path,
+                    'observed_precip_filepath': mswep_extract_path,
+                    'aoi_netcdf_path': aoi_mask_mswep_path,
+                    'reference_period_dates': reference_period_dates,
+                    'hindcast': False,
+                    'target_filename': target_pdf_path
+                },
+                task_name='Report',
+                target_path_list=[target_pdf_path],
+                dependent_task_list=[downscale_precip_task]
+            )
+
+    graph.close()
+    graph.join()
+    return file_registry.registry
 
 
 @validation.invest_validator
