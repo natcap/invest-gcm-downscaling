@@ -210,7 +210,7 @@ MODEL_SPEC = spec.ModelSpec(
             units=u.none
         ),
         spec.CSVOutput(
-            id='bootstrapped_dates_precip_[MODEL]_[EXPERIMENT].csv', #MODEL_EXPERIMENT can also be 'hindcast'
+            id='bootstrapped_dates_precip_[MODEL]_[EXPERIMENT].csv',  # EXPERIMENT can also be 'hindcast'
             path='intermediate/bootstrapped_dates_precip_[MODEL]_[EXPERIMENT].csv',
             about=gettext(
                 'Bootstrapped dates and associated precipitation '
