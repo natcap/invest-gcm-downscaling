@@ -437,9 +437,6 @@ def execute(args):
         model_args['gcm_model_list'] = [args['gcm_model']]
     knn.execute(model_args)
 
-    metadata = geometamaker.describe_collection(args['workspace_dir'],
-                                                describe_files=True)
-    metadata.write()
     return {}
 
 
