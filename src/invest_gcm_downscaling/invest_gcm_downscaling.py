@@ -3,6 +3,7 @@ This work is an adaptation of the GCMClimTool Library
 by Angarita H., Yates D., Depsky N. 2014-2021
 """
 
+import geometamaker
 import logging
 from osgeo import ogr
 from pprint import pformat
@@ -26,11 +27,23 @@ LOG_FMT = (
 DATE_EXPR = r"^(18|19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$"
 LIST_MODELS = [spec.Option(key=k) for k in knn.MODEL_LIST]
 
+_model_description = gettext(
+    """
+    The InVEST plugin for GCM Downscaling (https://github.com/natcap/gcm-downscaling)
+    is used to downscale gridded precipitation data from CMIP6 (Coupled Model
+    Intercomparison Project) GCMs (General Circulation Models) using observed
+    historical precipitation patterns. The goal is to produce realistic future
+    daily precipitation data that reflect both climate model projections and
+    statistical patterns of observed historical records. The model supports
+    both hindcasts and future projections.
+    """)
 
 MODEL_SPEC = spec.ModelSpec(
     model_id='gcm_downscaling',
     model_title=gettext('GCM Downscaling'),
     userguide='https://github.com/natcap/invest-gcm-downscaling/blob/main/README.md',
+    reporter='',
+    about=_model_description,
     module_name=__name__,
     input_field_order=[
         ['workspace_dir', 'aoi_path'],
@@ -53,7 +66,7 @@ MODEL_SPEC = spec.ModelSpec(
             required=True,
             fields=[],
             geometry_types={'POLYGON', 'MULTIPOLYGON'},
-            projected=True
+            projected=False
         ),
         spec.StringInput(
             id='reference_period_start_date',
@@ -154,8 +167,8 @@ MODEL_SPEC = spec.ModelSpec(
     ],
     outputs=[
         spec.SingleBandRasterOutput(
-            id='downscaled_precip_[model]_[experiment].nc',
-            path='output/downscaled_precip_[model]_[experiment].nc',
+            id='downscaled_precip_[MODEL]_[EXPERIMENT].nc',
+            path='output/downscaled_precip_[MODEL]_[EXPERIMENT].nc',
             about=gettext(
                 'Gridded NetCDF file containing the downscaled daily '
                 'precipitation time series for the specified climate '
@@ -163,8 +176,8 @@ MODEL_SPEC = spec.ModelSpec(
             bands=[]
         ),
         spec.FileOutput(
-            id='downscaled_precip_[model]_[experiment].pdf',
-            path='output/downscaled_precip_[model]_[experiment].pdf',
+            id='downscaled_precip_[MODEL]_[EXPERIMENT].pdf',
+            path='output/downscaled_precip_[MODEL]_[EXPERIMENT].pdf',
             about=gettext(
                 'Report with graphs and visualizations of downscaled '
                 'precipitation data for specified model and experiment')
@@ -186,14 +199,14 @@ MODEL_SPEC = spec.ModelSpec(
                 'hindcast precipitation data.')
         ),
         spec.SingleBandRasterOutput(
-            id='aoi_mask_[model].nc',
-            path='intermediate/aoi_mask_[model].nc',
+            id='aoi_mask_[MODEL].nc',
+            path='intermediate/aoi_mask_[MODEL].nc',
             about=gettext('Area of Interest (AOI) mask'),
             units=u.none
         ),
         spec.CSVOutput(
-            id='bootstrapped_dates_precip_[model_experiment | hindcast].csv',
-            path='intermediate/bootstrapped_dates_precip_[model_experiment | hindcast].csv',
+            id='bootstrapped_dates_precip_[MODEL]_[EXPERIMENT].csv',  # EXPERIMENT can also be 'hindcast'
+            path='intermediate/bootstrapped_dates_precip_[MODEL]_[EXPERIMENT].csv',
             about=gettext(
                 'Bootstrapped dates and associated precipitation '
                 'values used in the downscaling process.'),
@@ -228,11 +241,19 @@ MODEL_SPEC = spec.ModelSpec(
             ]
         ),
         spec.RasterOutput(
-            id='extracted_[model]_[experiment | hindcast].nc',
-            path='intermediate/extracted_[model]_[experiment | hindcast].nc',
+            id='extracted_[MODEL]_[EXPERIMENT].nc',  # EXPERIMENT can also be 'hindcast'
+            path='intermediate/extracted_[MODEL]_[EXPERIMENT].nc',
             about=gettext(
                 'NetCDF file containing precipitation data extracted from the '
-                'specified model and experiment (or hindcast), prior to downscaling.'),
+                'specified model and experiment (or hindcast), prior to'
+                'downscaling.'),
+            bands=[]
+        ),
+        spec.RasterOutput(
+            id='aoi_mask_mswep.nc',
+            path='intermediate/aoi_mask_mswep.nc',
+            about=gettext(
+                'AOI mask NetCDF file.'),
             bands=[]
         ),
         spec.RasterOutput(
@@ -252,16 +273,31 @@ MODEL_SPEC = spec.ModelSpec(
             bands=[]
         ),
         spec.RasterOutput(
-            id='pr_day_[model]_[experiment]_mean.nc',
-            path='intermediate/pr_day_[model]_[experiment]_mean.nc',
+            id='extracted_[MODEL]_historical.nc',
+            path='intermediate/extracted_[MODEL]_historical.nc',
+            about=gettext(
+                'NetCDF file with historical precipitation data extracted '
+                'from the [model].'),
+            bands=[]
+        ),
+        spec.CSVOutput(
+            id='bootstrapped_dates_precip_hindcast.csv',
+            path='intermediate/bootstrapped_dates_precip_hindcast.csv',
+            about=gettext(
+                'Bootstrapped dates precipitation hindcast table.'),
+            bands=[]
+        ),
+        spec.RasterOutput(
+            id='pr_day_[MODEL]_[EXPERIMENT]_mean.nc',
+            path='intermediate/pr_day_[MODEL]_[EXPERIMENT]_mean.nc',
             about=gettext(
                 'NetCDF file containing the daily mean precipitation '
                 'values for the specified model and experiment.'),
             bands=[]
         ),
         spec.CSVOutput(
-            id='synthesized_extreme_precip_[model]_[experiment].csv',
-            path='intermediate/synthesized_extreme_precip_[model]_[experiment].csv',
+            id='synthesized_extreme_precip_[MODEL]_[EXPERIMENT].csv',
+            path='intermediate/synthesized_extreme_precip_[MODEL]_[EXPERIMENT].csv',
             about=gettext(
                 'CSV file summarizing synthesized extreme precipitation '
                 'events for the specified model and experiment.'),
@@ -280,8 +316,9 @@ MODEL_SPEC = spec.ModelSpec(
                     units=u.millimeter
                 )
             ]
-        )
-    ]
+        ),
+        spec.TASKGRAPH_CACHE
+    ],
 )
 
 
@@ -352,10 +389,11 @@ def execute(args):
         args['n_workers'] (int, optional): The number of worker processes to
             use. If omitted, computation will take place in the current process.
             If a positive number, tasks can be parallelized across this many
-            processes, which can be useful if `gcm_experiment_list` contain
+            processes, which can be useful if `knn.GCM_EXPERIMENT_LIST` contain
             multiple items.
     """
     LOGGER.info(pformat(args))
+    args = MODEL_SPEC.preprocess_inputs(args)
 
     # Check AOI spatial reference
     _check_lonlat_coords(args['aoi_path'])
@@ -395,11 +433,11 @@ def execute(args):
         'observed_dataset_path': args['observed_dataset_path'],
         'n_workers': args.get('n_workers') or -1,
     }
-
     if args.get('gcm_model'):  # only add this model arg if gcm_model != ''
         model_args['gcm_model_list'] = [args['gcm_model']]
-
     knn.execute(model_args)
+
+    return {}
 
 
 @validation.invest_validator
