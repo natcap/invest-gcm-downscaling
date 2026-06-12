@@ -4,11 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "invest_gcm_downscaling"
-description = "An InVEST plugin for the GCM Downscaling model"
+description = "An InVEST plugin for the GCM Downscaling model, which downscales gridded precipitation data from CMIP6 General Circulation Models."
 readme = "README.md"
 license="Apache-2.0"
 license-files=["LICENSE"]
-version="0.0.1"
 maintainers = [
     {name = "Natural Capital Alliance Software Team"}
 ]
