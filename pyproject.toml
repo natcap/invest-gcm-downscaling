@@ -18,7 +18,7 @@ dependencies = [
     "natcap.invest>=3.18.0",
     "knn @ git+https://github.com/natcap/gcm-downscaling.git"] 
 
-[project-urls]
+[project.urls]
 Repository = "https://github.com/natcap/invest-gcm-downscaling.git"
 Issues = "https://github.com/natcap/invest-gcm-downscaling/issues"
 Documentation = "https://github.com/natcap/invest-gcm-downscaling/blob/main/README.md"
