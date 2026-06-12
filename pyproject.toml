@@ -3,13 +3,25 @@ requires = ["setuptools >= 40.6.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name="invest_gcm_downscaling"
-version="0.0.1"
+name = "invest_gcm_downscaling"
+description = "An InVEST plugin for the GCM Downscaling model, which downscales gridded precipitation data from CMIP6 General Circulation Models."
+readme = "README.md"
+version = "0.0.1"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+maintainers = [
+    {name = "Natural Capital Alliance Software Team"}
+]
 dependencies = [
     "taskgraph",
     "pygeoprocessing",
     "natcap.invest>=3.18.0",
     "knn @ git+https://github.com/natcap/gcm-downscaling.git"] 
+
+[project.urls]
+Repository = "https://github.com/natcap/invest-gcm-downscaling.git"
+Issues = "https://github.com/natcap/invest-gcm-downscaling/issues"
+Documentation = "https://github.com/natcap/invest-gcm-downscaling/blob/main/README.md"
 
 [tool.natcap.invest]
 api_version = "v1"
