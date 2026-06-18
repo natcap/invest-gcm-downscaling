@@ -18,6 +18,19 @@ Downscaling methods are based on those described in:
 ## Data
 A datastack json file is provided in this repo along with a sample vector for example/testing purposes only. Analysis-ready data are stored in `zarr` format in a public Google Cloud bucket (`natcap-climate-data`) hosted in the NatCap Servers cloud project. These data are accessed directly by the model (i.e., you do not need to manually acquire any additional data beyond an AOI vector). Note that no google authentication is needed as these climate data are publicly available.
 
+### Data License
+MSWEP is released under the
+[Creative Commons Attribution-NonCommerical (CC By-NC) 4.0 license](https://creativecommons.org/licenses/by-nc/4.0/deed.en)
+and can be used for academic research, nonprofit scientific studies,
+personal projects, and certain government or NGO applications. For more
+information, please visit https://www.gloh2o.org/.
+
+CMIP6 multi-model data are licensed under a
+[Creative Commons Attribution 4.0 International (CC BY 4.0) license](https://creativecommons.org/licenses/by/4.0/).
+For more information, please see the
+[CMIP6: Terms of Use](https://pcmdi.llnl.gov/CMIP6/TermsOfUse/TermsOfUse6-2.html)
+
+
 ## Model Inputs & Outputs
 
 ### Required Inputs:
